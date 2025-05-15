@@ -1,5 +1,5 @@
 from retriver import distance_api, token_api, tavily_data, google_search
-from classifier import grok_classifier
+from classifier import grok_classifier, summarizer
 import json
 import gc
 import os
@@ -9,16 +9,17 @@ model_id = os.getenv('MODEL_ID')
 grok_api_key = os.getenv('GROK_API_KEY')
 
 #--------------------------------> Grok <-----------------------------
-#--------------------------------> Grok <-----------------------------
 def grok_inference(user_input, tweet):
 
     if not user_input or not user_input.strip():
         raise ValueError("Query is empty or contains only whitespace.")
+    # Classifier
     try:
         classification = grok_classifier(user_input)
         print("Classification", classification)
     except Exception as e:
         raise RuntimeError(f"Extracting information failed: {e}")
+    # RAG
     try:
         if classification["category"] == "token":
             token_address = classification.get("token_address", "")
@@ -28,10 +29,43 @@ def grok_inference(user_input, tweet):
     except Exception as e:
         raise RuntimeError(f"Failed to retrieve context: {e}")
     
-    tavily_context = tavily_data(user_input)
-    google_query = user_input + tweet
-    google_context = google_search(google_query)
-    new_context = str(google_context) + str(tavily_context) + str(context)
+    context_parts = []
+    # context
+    try:
+        tavily_context = tavily_data(user_input)
+        context_parts.append(str(tavily_context))
+    except Exception as e:
+        print(f"Warning: Failed to retrieve Tavily data: {e}")
+
+    # summarizer
+    try:
+        google_query = summarizer(user_input=user_input, post=tweet)
+    except Exception as e:
+        print(f"Warning: Summarizer failed, falling back to basic query: {e}")
+        google_query = user_input + " " + tweet
+
+    try:
+        google_context = google_search(google_query)
+        context_parts.append(str(google_context))
+    except Exception as e:
+        print(f"Warning: Failed to retrieve Google search results: {e}")
+
+
+    try:
+        if classification.get("category") == "token":
+            token_address = classification.get("token_address", "")
+            if not token_address:
+                raise ValueError("Missing token address for token category.")
+            context = token_api(token_address)
+        else:
+            context = distance_api(user_input)
+        context_parts.append(str(context))
+    except Exception as e:
+        print(f"Warning: Failed to retrieve classification-based context: {e}")
+
+    new_context = " ".join(context_parts)
+
+
     messages = [
     {
         "role": "system",
@@ -116,18 +150,20 @@ def grok_inference(user_input, tweet):
     """
         },
     ]
+    try:
+        client = OpenAI(
+        base_url="https://api.x.ai/v1",
+        api_key=grok_api_key,
+        )
 
-    client = OpenAI(
-    base_url="https://api.x.ai/v1",
-    api_key=grok_api_key,
-    )
-
-    completion = client.chat.completions.create(
-        model="grok-3-mini-beta",
-        reasoning_effort="high",
-        messages=messages,
-        temperature=0.7,
-    )
-    response = completion.choices[0].message.content
-    print(response, "Response")
-    return response, classification, new_context
+        completion = client.chat.completions.create(
+            model="grok-3-mini-beta",
+            reasoning_effort="high",
+            messages=messages,
+            temperature=0.7,
+        )
+        response = completion.choices[0].message.content
+        return response, classification, new_context
+    
+    except Exception as e:
+        raise RuntimeError(f"Grok Reply Inference API call failed: {e}")

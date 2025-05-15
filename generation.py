@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
 from inference import grok_inference
-from classifier import grok_classifier, grok_post_writer
+from classifier import grok_classifier, grok_post_writer, find_most_similar_replies
 from retriver import get_combined_stats_with_api, clean_tweet_text
 from twitter_apis import post_tweets, get_latest_top3_posts, get_replies_to_tweets, extract_usernames_from_excel, filter_replies_by_usernames, filter_recent_replies, filter_unreplied_tweets, reply_to_tweet, extract_mentions, add_username_to_excel
 from fastapi.responses import JSONResponse
@@ -17,15 +17,13 @@ from apscheduler.triggers.cron import CronTrigger
 from fastapi.middleware.cors import CORSMiddleware
 import pytz
 import datetime
-from queries import create_parent_post, create_our_post_reply, create_our_reply, get_recent_parent_posts
+from queries import create_parent_post, create_our_post_reply, create_our_reply, get_recent_parent_posts, get_replied_usernames_for_parent_post
 from database import init_db, SessionLocal
 
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
 
 # -----> Schedular <----- #
 us_eastern = pytz.timezone('US/Eastern')
@@ -54,12 +52,12 @@ async def lifespan(app: FastAPI):
     )
 
     # Post Tweet – 3 times a day
-    scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=15, minute=28), args=[app])
+    scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=13, minute=50), args=[app])
     # scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=8, minute=10, timezone=us_eastern), args=[app])
     # scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=21, minute=0, timezone=us_eastern), args=[app])
 
     # Reply to Recent – 7 times a day
-    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=20, minute=22), args=[app])
+    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=14, minute=10), args=[app])
     # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=17, minute=0, timezone=us_eastern), args=[app])
     # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=9, minute=0, timezone=us_eastern), args=[app])
     # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=11, minute=0, timezone=us_eastern), args=[app])
@@ -246,7 +244,6 @@ async def reply_to_recent_tweets(request: Request):
     try:
 
         list_of_posts = get_latest_top3_posts()
-
         logger.info(f"get_latest_top3_posts returned: {list_of_posts}")
 
         if isinstance(list_of_posts, dict) and "error" in list_of_posts:
@@ -292,13 +289,26 @@ async def reply_to_recent_tweets(request: Request):
 
         list_of_replies = get_replies_to_tweets(posts)
         logger.info(f"Retrieved {len(list_of_replies)} replies")
-        #usernames = extract_usernames_from_excel()
+        twitter_post_ids = list({reply['conversation_id'] for reply in list_of_replies})
+        replied_usernames = set(get_replied_usernames_for_parent_post(twitter_post_ids))
 
+        filtered_replies = [
+        reply_tuple for reply_tuple in list_of_replies
+        if reply_tuple['username'] not in replied_usernames
+        ]
+        logger.info(f"Filtered Replies: {filtered_replies}")
+        #usernames = extract_usernames_from_excel()
         #usernames_filtered_replies = filter_replies_by_usernames(list_of_replies, usernames)
 
-        time_filtered_replies = filter_recent_replies(list_of_replies)
+        similar_filtered_replies = find_most_similar_replies(filtered_replies)
+        logger.info(f"Similar Replies: {similar_filtered_replies}")
 
-        unreplied_tweets, details = filter_unreplied_tweets(time_filtered_replies)
+        if not similar_filtered_replies:
+            similar_filtered_replies = filter_recent_replies(filtered_replies)
+            logger.info(f"There are no similar replies so latest replies to be responded: {similar_filtered_replies}")
+
+        unreplied_tweets, details = filter_unreplied_tweets(similar_filtered_replies)
+        logger.info(f"Un-replied Tweets: {unreplied_tweets}")
 
         replied_tweets = []
         for tweet in unreplied_tweets:
@@ -358,7 +368,7 @@ async def reply_to_recent_tweets(request: Request):
 @app.post("/reply-to-mention", summary="Reply to Mention Tweets", response_description="Replies posted to mentions successfully.")
 async def reply_to_mention_tweets(request: Request):
     try:
-        list_of_replies = extract_mentions()
+        list_of_replies = await extract_mentions()
         logger.info(f"extract_mentions returned: {list_of_replies}")
 
         if not isinstance(list_of_replies, list):
@@ -405,7 +415,7 @@ async def reply_to_mention_tweets(request: Request):
                 continue
 
             try:
-                response, classification, context = x_inference(model, tokenizer, query, parent_post)
+                response, classification, context = grok_inference(query, parent_post)
                 logger.info(f"Inference output for mention {tweet_id}: response={response}")
             except Exception as e:
                 logger.error(f"Inference failed for mention {tweet_id}: {e}")

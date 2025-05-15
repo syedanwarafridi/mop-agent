@@ -209,7 +209,7 @@ def filter_replies_by_usernames(replies, target_usernames):
     return filtered_replies
 
 # -------------> Filtered Replies based on time <------------- #
-def filter_recent_replies(replies, hours=24, max_replies=2):
+def filter_recent_replies(replies, hours=24, max_replies=4):
     now = datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=hours)
 
@@ -359,7 +359,6 @@ def filter_unreplied_tweets(tweets, my_username="Shift1646020"):
         })
         # Mark as “we’ll reply” so we don’t do it twice in this run
         replied_users_per_post[parent_text].add(replying_user)
-
     return unreplied, details
 
 
@@ -393,120 +392,134 @@ def reply_to_tweet(tweet_id, reply_text):
 
 
 # ----------------> Extract mentions <----------------
-def extract_mentions():
+from datetime import datetime, timezone
+
+# Simple in-memory cache for parent tweets
+_parent_tweet_cache = {}
+
+async def extract_mentions():
     try:
-        username = "MIND_agent"
-        my_username_lower = username.lower()
+        request_counts = {
+            "get_user": 0,
+            "get_users_mentions": 0,
+            "get_tweets": 0,
+            "search_recent_tweets": 0
+        }
 
-        user = client.get_user(username=username)
-        if not user.data:
+        username = "Shift1646020"
+        my_username = username.lower()
+
+        # 1. Lookup user
+        user_resp = client.get_user(username=username)
+        request_counts["get_user"] += 1
+        if not user_resp.data:
+            print("API request counts:", request_counts)
             return []
+        user_id = user_resp.data.id
 
-        user_id = user.data.id
-
-        mentions = client.get_users_mentions(
+        # 2. Fetch mentions with expansions for parent tweets
+        mentions_resp = client.get_users_mentions(
             id=user_id,
             max_results=10,
-            expansions=['author_id', 'referenced_tweets.id.author_id'],
-            tweet_fields=['created_at', 'referenced_tweets', 'conversation_id'],
+            expansions=[
+                'author_id',
+                'referenced_tweets.id',
+                'referenced_tweets.id.author_id'
+            ],
+            tweet_fields=['created_at', 'referenced_tweets', 'conversation_id', 'text'],
             user_fields=['username']
         )
-
-        if not mentions.data:
+        request_counts["get_users_mentions"] += 1
+        if not mentions_resp.data:
+            print("API request counts:", request_counts)
             return []
 
-        # Get today's date in UTC
-        today_utc = datetime.now(timezone.utc).date()
+        # Prepare maps from includes
+        users_map = {u.id: u.username for u in mentions_resp.includes.get('users', [])}
+        tweets_map = {t.id: t for t in mentions_resp.includes.get('tweets', [])}
 
-        author_ids = {user.id: user.username for user in mentions.includes.get('users', [])}
-
+        today = datetime.now(timezone.utc).date()
         mention_details = []
-        replied_conversations = set()
-        replied_users_per_post = {}
+        seen_convos = set()
 
-        for tweet in mentions.data:
-            if tweet.created_at.date() != today_utc:
+        for mention in mentions_resp.data:
+            if mention.created_at.date() != today:
                 continue
 
-            author_username = author_ids.get(tweet.author_id, 'Unknown')
-            parent_author_id = None
-            parent_post_text = None
-            conversation_id = tweet.conversation_id
-            tweet_id = tweet.id
+            convo_id = mention.conversation_id
+            if convo_id in seen_convos:
+                continue
 
-            if tweet.referenced_tweets:
-                for ref_tweet in tweet.referenced_tweets:
-                    if ref_tweet.type in ['replied_to', 'quoted']:
-                        ref_tweet_id = ref_tweet.id
-                        ref_tweet_data = client.get_tweet(
-                            id=ref_tweet_id,
-                            tweet_fields=['author_id', 'text']
-                        )
-                        if ref_tweet_data.data:
-                            parent_author_id = ref_tweet_data.data.author_id
-                            parent_post_text = ref_tweet_data.data.text
-                        else:
-                            continue
-            else:
-                parent_author_id = tweet.author_id
-                parent_post_text = tweet.text
+            author = users_map.get(mention.author_id, 'Unknown')
+
+            # Determine parent tweet
+            parent_id = None
+            if mention.referenced_tweets:
+                for ref in mention.referenced_tweets:
+                    if ref.type in ('replied_to', 'quoted'):
+                        parent_id = ref.id
+                        break
+
+            if not parent_id:
+                parent_id = mention.id
+
+            # Fetch parent tweet from cache or API
+            if parent_id not in _parent_tweet_cache:
+                parent_resp = client.get_tweets(
+                    ids=[parent_id],
+                    tweet_fields=['author_id', 'text'],
+                    expansions=['author_id'],
+                    user_fields=['username']
+                )
+                request_counts["get_tweets"] += 1
+                if parent_resp.data:
+                    p = parent_resp.data[0]
+                    p_user = parent_resp.includes['users'][0].username
+                    _parent_tweet_cache[parent_id] = (p.author_id, p.text)
+                else:
+                    _parent_tweet_cache[parent_id] = (None, '')
+
+            parent_author_id, parent_text = _parent_tweet_cache[parent_id]
 
             if parent_author_id == user_id:
                 continue
 
-            if conversation_id in replied_conversations:
-                continue
+            # 3. Check if we already replied
+            query = f"conversation_id:{convo_id} -is:retweet"
+            resp = client.search_recent_tweets(
+                query=query,
+                max_results=10,
+                tweet_fields=['author_id'],
+                expansions=['author_id'],
+                user_fields=['username']
+            )
+            request_counts["search_recent_tweets"] += 1
 
-            if parent_post_text not in replied_users_per_post:
-                replied_users_per_post[parent_post_text] = set()
-            if author_username in replied_users_per_post[parent_post_text]:
-                continue
-
-            query = f'conversation_id:{conversation_id} -is:retweet'
-            try:
-                found_reply = False
-                for response in tweepy.Paginator(
-                    client.search_recent_tweets,
-                    query=query,
-                    tweet_fields=['author_id'],
-                    expansions='author_id',
-                    user_fields=['username'],
-                    max_results=10
-                ):
-                    if response.data:
-                        users = {u['id']: u for u in response.includes['users']}
-                        for reply in response.data:
-                            author = users.get(reply.author_id)
-                            if author and author.username.lower() == my_username_lower:
-                                found_reply = True
-                                break
-                    if found_reply:
+            replied = False
+            if resp.data:
+                users_reply = {u.id: u.username.lower() for u in resp.includes.get('users', [])}
+                for reply in resp.data:
+                    if users_reply.get(reply.author_id) == my_username:
+                        replied = True
                         break
-                if found_reply:
-                    continue
-            except Exception as e:
-                logger.error(f"Error checking replies for tweet_id {tweet_id}: {e}")
+            if replied:
                 continue
 
             mention_details.append({
-                'username': author_username,
-                'tweet_id': tweet.id,
-                'text': tweet.text,
-                'created_at': tweet.created_at,
-                'parent_post_text': parent_post_text,
-                'conversation_id': conversation_id
+                'username': author,
+                'tweet_id': mention.id,
+                'text': mention.text,
+                'created_at': mention.created_at,
+                'parent_post_text': parent_text,
+                'conversation_id': convo_id
             })
+            seen_convos.add(convo_id)
 
-            replied_conversations.add(conversation_id)
-            replied_users_per_post[parent_post_text].add(author_username)
-
+        print("API request counts:", request_counts)
         return mention_details
 
-    except tweepy.TweepyException as e:
-        logger.error(f"Tweepy exception: {e}")
-        return []
     except Exception as e:
-        logger.error(f"Unhandled exception: {e}")
+        print(f"Error in extract_mentions: {e}")
         return []
 
 #  -----------------> STATS <---------------- #

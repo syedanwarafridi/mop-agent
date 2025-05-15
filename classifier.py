@@ -2,6 +2,9 @@ import os
 import json
 from retriver import tavily_for_post
 from openai import OpenAI
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 from dotenv import load_dotenv
 import random
 
@@ -145,10 +148,10 @@ def grok_news_filterer(posts, news):
             response_format={ "type": "json_object" }
         )
         response = completion.choices[0].message.content
-        return response
+        return json.loads(response)
 
     except Exception as e:
-        raise RuntimeError(f"Summarizer failed: {e}")
+        raise RuntimeError(f"News Analyzer failed: {e}")
     
 #--------------------------> Grok Post Writer <--------------------------------#
 def grok_post_writer(source_set: int, posts):
@@ -157,7 +160,7 @@ def grok_post_writer(source_set: int, posts):
         search_query = "Latest news on crypto market, digital assets and blockchain" 
         latest_news = tavily_for_post(search_query, source_set=source_set)
         resp = grok_news_filterer(posts, latest_news)
-
+        print(resp, "Analyzer", type(resp))
         if resp["similar"]:
             other_sources = [s for s in [1, 2, 3] if s != source_set]
             source_set = random.choice(other_sources)
@@ -169,13 +172,12 @@ def grok_post_writer(source_set: int, posts):
                     You are MINDAgent, the supreme crypto AI tech-god who imparts the latest news in crypto to its followers
 
                     You adhere by the X post rules
-                    You ALWAYS pick ONLY TWO news items from the news items you get 
-                    You always use percentages, trade volumes and/or dollar values when you write
+                    You ALWAYS pick latest news that has percentages, trade volumes and/or dollar values
                     You ALWAYS ignore news with no percentages, trade volumes and/or dollar values
                     You write them in sentences and bullets
                     No Paragraphs
-                    One line spacing 
-                    You  Give a SHORT one line summary at the end in your style
+                    One line spacing
+                    You  Give a one line summary at the end in your style
                     You will be laser-focused on news, not noise.
 
                     YOU MUST ADHERE TO TWITTER RULES
@@ -204,29 +206,39 @@ def grok_post_writer(source_set: int, posts):
                         - Divine arrogance
                         - Use **$**, **%**, **+**, **–**, **≈**, **/**, **:**AM/PM and so on
                         - All financial and numerical data MUST be formatted with glyphs
-             
+
                     Example summary line:
-                        "While retail debates narratives. institutional accumulation happening right in front of us"
+                        "BlackRock and Fidelity bought $500M $ETH in 2 days while retail debates narratives. institutional accumulation happening right in front of us"
                         "the token is eating the floor price. always does. mcdeez and pharrell just add marketing juice to the slaughter. usual stuff"
                         "symp finally got their agents working. solid team behind it but slow to ship."
-                        "up only. whales are stacking and price is strong"          
+                        "up only. whales are stacking and price is strong"
 
-                                    
+
                     Example posts:
                     Example Post 1:
                     105k btc lmk when ur done celebrating
 
-                    record weekly inflows $882M with $867M pure corn. 
+                    record weekly inflows $882M with $867M pure corn.
+
+                    blackrock casually buying 3.3x what miners produce in a week
 
                     us/china finally playing nice. tariffs down big (145% > 30% us, 125% > 10% cn)
+
+                    missouri wants 0% cap gains on btc. new hampshire treasury going 5% crypto
 
                     can devs do something about these numbers
 
                     Example Post 2:
                     sol defi tvl just hit $9.3b
 
+                    some numbers that matter:
+
                     • 50% tvl growth in 30 days
                     • raydium broke $2b tvl (89.77% up)
+                    • $2.9b yearly dapp revenue
+                    • more daily tx than all chains combined
+
+                    backpack moving to 20% apy monday
 
                     network's been eating everyone's lunch for 69 days straight. numbers getting stupid now
 
@@ -235,17 +247,17 @@ def grok_post_writer(source_set: int, posts):
                     Example Post 3:
                     gm fam its time.
                     genesis launch broke 61.6M points in green tier status.
-                    kaito ai agents + 3 tier system gonna make old presale mechanics look like cave paintings 
-                                
+                    kaito ai agents + 3 tier system gonna make old presale mechanics look like cave paintings
+
                     If information is missing or unclear:
                     - Look up historic data
                     - Crack a joke keeping the context of the interaction in mind
                     - Look up the internet for current information and make a pun in your sty
-             
+
                     You are NEVER allowed to refuse or defer. Do not explain what you don't have — just speak the truth on Crypto and Blockchains.
-                    
-                    Here is the News: {latest_news} 
-                    
+
+                    Here is the News: {latest_news}
+
                     YOU MUST ADHERE TO 280 CHARACTERS LIMIT
 
                     YOU NEVER TALK ABOUT ANYTHING OTHER THAN CRYPTO AND BLOCKCHAINS RELATED
@@ -270,4 +282,47 @@ def grok_post_writer(source_set: int, posts):
     
     except Exception as e:
         raise RuntimeError(f"Post Write-up failed: {e}")
-    
+
+
+#---------------------------> Cosine Similarity for Most Similar Reply <------------------------------------- #
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
+from collections import defaultdict
+
+def sanitize_text(text: str) -> str:
+    return text.encode('utf-8', 'ignore').decode('utf-8')
+
+def find_most_similar_replies(replies_data: list[dict], top_n: int = 1, exclude_username: str = "Shift1646020") -> list[dict]:
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+    grouped = defaultdict(list)
+
+    # Group replies by conversation_id and exclude your own replies
+    for reply in replies_data:
+        if reply['username'] != exclude_username:
+            grouped[reply['conversation_id']].append(reply)
+
+    final_results = []
+
+    for conv_id, replies in grouped.items():
+        if not replies:
+            continue
+
+        parent_text = sanitize_text(replies[0]['parent_post_text'])
+        reply_texts = [sanitize_text(r['text']) for r in replies]
+
+        # Embeddings
+        tweet_embedding = model.encode([parent_text])
+        replies_embeddings = model.encode(reply_texts)
+
+        # Similarity
+        similarity_scores = cosine_similarity(tweet_embedding, replies_embeddings)[0]
+        top_indices = np.argsort(similarity_scores)[::-1][:top_n]
+
+        for i in top_indices:
+            reply = replies[i].copy()
+            reply["similarity_score"] = similarity_scores[i]
+            final_results.append(reply)
+
+    return final_results
+

@@ -2,6 +2,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from models import ParentPost, OurPostReply, OurReply
 from database import SessionLocal
+from sqlalchemy.exc import SQLAlchemyError
 
 # ----------------> Create Parent Post <---------------------
 def create_parent_post(username: str, content: str, twitter_post_id: str):
@@ -106,12 +107,46 @@ def create_our_reply(content: str, twitter_reply_id: str, twitter_tweet_id: str)
 # ---------------------> 3 Most Recent Posts <---------------
 def get_recent_parent_posts(limit: int = 3):
     db: Session = SessionLocal()
-    recent_posts = db.query(ParentPost).order_by(ParentPost.created_at.desc()).limit(limit).all()
+    try:
+        recent_posts = (
+            db.query(ParentPost)
+            .order_by(ParentPost.created_at.desc())
+            .limit(limit)
+            .all()
+        )
 
-    # Unzip the posts into separate lists
-    post_ids = [post.post_id for post in recent_posts]
-    usernames = [post.username for post in recent_posts]
-    contents = [post.content for post in recent_posts]
-    created_ats = [post.created_at for post in recent_posts]
+        if not recent_posts:
+            print("No recent posts found.")
+            return []
 
-    return contents
+        contents = [post.content for post in recent_posts]
+        return contents
+
+    except Exception as e:
+        print(f"Error occurred while fetching recent parent posts: {e}")
+        return []
+
+    finally:
+        db.close()
+
+#---------------------------------------> responded users <------------------------------
+def get_replied_usernames_for_parent_post(twitter_post_ids):
+
+    db: Session = SessionLocal()
+    try:
+        results = (
+            db.query(OurPostReply.username)
+            .join(OurReply, OurReply.twitter_tweet_id == OurPostReply.twitter_tweet_id)
+            .filter(OurPostReply.twitter_post_id.in_(twitter_post_ids))
+            .distinct()
+            .all()
+        )
+        return [username for (username,) in results]
+
+    except SQLAlchemyError as e:
+        print(f"Database error occurred: {e}")
+        return []
+
+    finally:
+        db.close()
+

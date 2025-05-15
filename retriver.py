@@ -81,16 +81,56 @@ tavily_api_key = os.getenv('TAVILY_API_KEY')
 
 os.environ['TAVILY_API_KEY'] = tavily_api_key
 def tavily_data(query: str):
-    tool = TavilySearchResults(max_results=5,include_domains=["https://crypto.news/", "https://cointelegraph.com/", "https://dexscreener.com/"], include_images=False, include_videos=False, include_links=True)
-    results = tool.invoke(query)
-    # filtered_results = [{"title": item["title"], "content": item["content"]} for item in results]
-    return results
+    try:
+        tool = TavilySearchResults(
+            max_results=5,
+            include_domains=[
+                "https://crypto.news/",
+                "https://cointelegraph.com/",
+                "https://dexscreener.com/"
+            ],
+            include_images=False,
+            include_videos=False,
+            include_links=True
+        )
+        results = tool.invoke(query)
+
+        if not isinstance(results, list):
+            raise ValueError("Unexpected result format: Expected a list.")
+
+        filtered_results = [
+            {"title": item.get("title", "No Title"), "content": item.get("content", "No Content")}
+            for item in results
+        ]
+
+        return filtered_results
+
+    except Exception as e:
+        # Optionally, log the error or re-raise it depending on the use case
+        print(f"Error occurred in tavily_data: {e}")
+        return []
+
 
 # -----------------------> Tavily google search <----------------------- #
 def google_search(query: str):
-    tool = TavilySearchResults(max_results=3, include_images=False, include_videos=False, include_links=True)
-    results = tool.invoke(query)
-    return results
+    try:
+        tool = TavilySearchResults(
+            max_results=3,
+            include_images=False,
+            include_videos=False,
+            include_links=True
+        )
+        results = tool.invoke(query)
+
+        if not isinstance(results, list):
+            raise ValueError("Unexpected result format: Expected a list.")
+
+        return results
+
+    except Exception as e:
+        print(f"Error occurred in google_search: {e}")
+        return []
+
 
 # -----------------------> Tavily for POSTs <----------------------- #
 tavily_api_key = os.getenv('TAVILY_API_KEY')
