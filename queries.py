@@ -1,8 +1,10 @@
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-from models import ParentPost, OurPostReply, OurReply
+from models import ParentPost, OurPostReply, OurReply, CMCNews
 from database import SessionLocal
 from sqlalchemy.exc import SQLAlchemyError
+import requests
+from sqlalchemy import desc
 
 # ----------------> Create Parent Post <---------------------
 def create_parent_post(username: str, content: str, twitter_post_id: str):
@@ -150,3 +152,54 @@ def get_replied_usernames_for_parent_post(twitter_post_ids):
     finally:
         db.close()
 
+#---------------------------------------> Fetch Articles from CMC and store <------------------------------
+import requests
+
+def fetch_articles(endpoint="http://168.231.107.232:6969/content"):
+    try:
+        response = requests.get(endpoint, timeout=5)
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        print(f"Failed to fetch articles: {e}")
+        return None
+
+def store_articles():
+    articles = fetch_articles()
+    db: Session = SessionLocal()
+    if not articles:
+        print("No articles to store.")
+        return
+
+    try:
+        for article in articles:
+            new_entry = OurReply(
+                title=article["title"],
+                content=article["text"]
+            )
+            db.add(new_entry)
+        db.commit()
+        print("Articles stored successfully.")
+    except SQLAlchemyError as db_err:
+        db.rollback()
+        print(f"Database error: {db_err}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+
+#---------------------------------------> Extract CMC Articles/News from db <------------------------------
+from sqlalchemy import desc
+
+def get_latest_articles():
+    try:
+        db: Session = SessionLocal()
+        limit = 3
+        articles = (
+            db.query(CMCNews)
+            .order_by(desc(CMCNews.created_at))
+            .limit(limit)
+            .all()
+        )
+        return articles[0]
+    except Exception as e:
+        print(f"Error fetching latest articles: {e}")
+        return []

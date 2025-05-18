@@ -52,17 +52,17 @@ async def lifespan(app: FastAPI):
     )
 
     # Post Tweet – 3 times a day
-    scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=13, minute=0, timezone=us_eastern), args=[app])
-    scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=8, minute=10, timezone=us_eastern), args=[app])
-    scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=21, minute=0, timezone=us_eastern), args=[app])
+    # scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=13, minute=0, timezone=us_eastern), args=[app])
+    # scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=8, minute=10, timezone=us_eastern), args=[app])
+    # scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=21, minute=0, timezone=us_eastern), args=[app])
 
-    # Reply to Recent – 7 times a day
-    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=14, minute=0, timezone=us_eastern), args=[app])
-    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=17, minute=0, timezone=us_eastern), args=[app])
-    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=9, minute=0, timezone=us_eastern), args=[app])
-    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=11, minute=0, timezone=us_eastern), args=[app])
-    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=22, minute=0, timezone=us_eastern), args=[app])
-    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=23, minute=0, timezone=us_eastern), args=[app])
+    # # Reply to Recent – 7 times a day
+    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=14, minute=0, timezone=us_eastern), args=[app])
+    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=17, minute=0, timezone=us_eastern), args=[app])
+    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=9, minute=0, timezone=us_eastern), args=[app])
+    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=11, minute=0, timezone=us_eastern), args=[app])
+    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=22, minute=0, timezone=us_eastern), args=[app])
+    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=23, minute=0, timezone=us_eastern), args=[app])
     #scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=21, minute=0), args=[app])
 
     # Reply to Mention – 3 times a day

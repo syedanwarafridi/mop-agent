@@ -1,6 +1,6 @@
 import os
 import json
-from retriver import tavily_for_post
+from retriver import tavily_for_post, get_latest_cmc_articles
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -157,14 +157,18 @@ def grok_news_filterer(posts, news):
 def grok_post_writer(source_set: int, posts):
     try:
 
-        search_query = "Latest news on crypto market, digital assets and blockchain" 
-        latest_news = tavily_for_post(search_query, source_set=source_set)
-        resp = grok_news_filterer(posts, latest_news)
-        print(resp, "Analyzer", type(resp))
-        if resp["similar"]:
-            other_sources = [s for s in [1, 2, 3] if s != source_set]
-            source_set = random.choice(other_sources)
-            latest_news = tavily_for_post(search_query, source_set=source_set)
+        # search_query = "Latest news on crypto market, digital assets and blockchain" 
+        # latest_news = tavily_for_post(search_query, source_set=source_set)
+        # resp = grok_news_filterer(posts, latest_news)
+        # print(resp, "Analyzer", type(resp))
+        # if resp["similar"]:
+        #     other_sources = [s for s in [1, 2, 3] if s != source_set]
+        #     source_set = random.choice(other_sources)
+        #     latest_news = tavily_for_post(search_query, source_set=source_set)
+        latest_news = get_latest_cmc_articles()
+        if latest_news is None or len(latest_news) == 0:
+            raise RuntimeError("No news data retrieved from CMC. Cannot proceed with post generation.")
+
 
         messages = [
             {"role": "system", "content": """You are MINDAgent - an AI oracle. Your task is to Write post for Twitter strictly based on the provided context."""},

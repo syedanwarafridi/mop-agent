@@ -36,6 +36,14 @@ class OurReply(Base):
     twitter_tweet_id = Column(String(100), ForeignKey("our_post_replies.twitter_tweet_id"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
+class CMCNews(Base):
+    __tablename__ = "cmc_news"
+
+    news_id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(Text, nullable=False)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
 # ------------------------------------------------------------------------------------->
 # class MentionPost(Base):
 #     __tablename__ = "mention_post"

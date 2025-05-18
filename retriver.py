@@ -257,3 +257,24 @@ def clean_tweet_text(text: str) -> str:
     text = re.sub(r'\s+([.,!?])', r'\1', text)
 
     return text
+
+# -----------------------> CMC API <----------------------- #
+def get_latest_cmc_articles():
+    try:
+        endpoint="http://168.231.107.232:6969/content"
+        response = requests.get(endpoint, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return [d for d in data if d.get("title") and d.get("text")]
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+    except requests.exceptions.ConnectionError:
+        print("Error connecting to the server.")
+    except requests.exceptions.Timeout:
+        print("Request timed out.")
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred: {e}")
+    except ValueError:
+        print("Failed to parse JSON response.")
+    return None
+
