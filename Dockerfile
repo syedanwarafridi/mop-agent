@@ -27,7 +27,7 @@
 # EXPOSE 8080
 
 # # Command to run the application
-# CMD ["uvicorn", "generation:app", "--host", "0.0.0.0", "--port", "8080"]
+# CMD ["uvicorn", "generation:app", "--host", "0.0.0.0", "--port", "8080"] --no-cache-dir
 FROM python:3.10-slim
 
 WORKDIR /app
@@ -48,7 +48,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip setuptools wheel && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install -r requirements.txt
 
 EXPOSE 8080 7860
 

@@ -52,23 +52,23 @@ async def lifespan(app: FastAPI):
     )
 
     # Post Tweet – 3 times a day
-    scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=13, minute=50), args=[app])
-    # scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=8, minute=10, timezone=us_eastern), args=[app])
-    # scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=21, minute=0, timezone=us_eastern), args=[app])
+    scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=13, minute=0, timezone=us_eastern), args=[app])
+    scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=8, minute=10, timezone=us_eastern), args=[app])
+    scheduler.add_job(scheduled_post_tweet, CronTrigger(hour=21, minute=0, timezone=us_eastern), args=[app])
 
     # Reply to Recent – 7 times a day
-    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=14, minute=10), args=[app])
-    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=17, minute=0, timezone=us_eastern), args=[app])
-    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=9, minute=0, timezone=us_eastern), args=[app])
-    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=11, minute=0, timezone=us_eastern), args=[app])
-    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=22, minute=0, timezone=us_eastern), args=[app])
-    # scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=23, minute=0, timezone=us_eastern), args=[app])
+    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=14, minute=0, timezone=us_eastern), args=[app])
+    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=17, minute=0, timezone=us_eastern), args=[app])
+    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=9, minute=0, timezone=us_eastern), args=[app])
+    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=11, minute=0, timezone=us_eastern), args=[app])
+    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=22, minute=0, timezone=us_eastern), args=[app])
+    scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=23, minute=0, timezone=us_eastern), args=[app])
     #scheduler.add_job(scheduled_reply_to_recent, CronTrigger(hour=21, minute=0), args=[app])
 
     # Reply to Mention – 3 times a day
     #scheduler.add_job(scheduled_reply_to_mention, CronTrigger(hour=2, minute=30), args=[app])
     #scheduler.add_job(scheduled_reply_to_mention, CronTrigger(hour=10, minute=30), args=[app])
-    #scheduler.add_job(scheduled_reply_to_mention, CronTrigger(hour=18, minute=30), args=[app])
+    #scheduler.add_job(scheduled_reply_to_mention, CronTrigger(hour=18, minute=30), args=[app]) protobuf==3.20.3
 
     scheduler.start()
 
@@ -211,9 +211,13 @@ async def post_tweet(request: Request):
             source_set = {8: 1, 7: 2, 21: 3}.get(current_hour, 1)
         else:
             source_set = 3
+        logger.info(f"Source Set for News: {source_set}")
         
         posts = get_recent_parent_posts()
+        logger.info(f"Extracted Posts: {posts}")
+
         tweet_content = grok_post_writer(source_set=source_set, posts=posts)
+        logger.info(f"Tweet Content: {tweet_content}")
         # text = clean_tweet_text(tweet_content)
         # print("Tweet Content: ", text)
         
@@ -223,8 +227,12 @@ async def post_tweet(request: Request):
             return JSONResponse(status_code=400, content={"success": False, "error": {"message": response}})
         if response.get("error"):
             return JSONResponse(status_code=400, content={"success": False, "error": {"message": response["error"]}})
+        
         #Store in DB
-        create_parent_post("MINDAgent", tweet_content, response["tweet_id"])
+        new_post = create_parent_post("MINDAgent", tweet_content, response["tweet_id"])
+        if new_post:
+            logger.info(f"Post stored in DB successfully: {new_post}")
+
         return {
             "success": True,
             "response": {
@@ -383,14 +391,14 @@ async def reply_to_mention_tweets(request: Request):
                 }
             )
 
-        usernames = extract_usernames_from_excel()
-        usernames_filtered_replies = filter_replies_by_usernames(list_of_replies, usernames)
-        logger.info(f"Filtered {len(usernames_filtered_replies)} replies by usernames")
+        # usernames = extract_usernames_from_excel()
+        # usernames_filtered_replies = filter_replies_by_usernames(list_of_replies, usernames)
+        # logger.info(f"Filtered {len(usernames_filtered_replies)} replies by usernames")
 
-        time_filtered_replies = filter_recent_replies(usernames_filtered_replies)
+        time_filtered_replies = filter_recent_replies(list_of_replies)
         logger.info(f"Filtered {len(time_filtered_replies)} recent replies")
 
-        unreplied_tweets = filter_unreplied_tweets(time_filtered_replies)
+        unreplied_tweets, details = filter_unreplied_tweets(time_filtered_replies)
         logger.info(f"Found {len(unreplied_tweets)} unreplied tweets: {unreplied_tweets}")
 
         if not unreplied_tweets:

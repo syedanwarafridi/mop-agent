@@ -113,11 +113,46 @@ def get_latest_top3_posts():
         return {"error": f"Unexpected error: {str(e)}"}
     
 # ----------------> Extracting Tweet-Replies <----------------
-def get_replies_to_tweets(tweets_info):
+# def get_replies_to_tweets(tweets_info):
+#     all_replies = []
+
+#     for tweet in tweets_info:
+#         tweet_id = tweet['tweet_id']
+#         post_text = tweet['text']
+#         query = f'conversation_id:{tweet_id} -is:retweet'
+
+#         try:
+#             for response in tweepy.Paginator(
+#                 client.search_recent_tweets,
+#                 query=query,
+#                 tweet_fields=['author_id', 'created_at', 'in_reply_to_user_id'],
+#                 expansions='author_id',
+#                 user_fields=['username'],
+#                 max_results=100
+#             ):
+#                 if response.data:
+#                     users = {u['id']: u for u in response.includes['users']}
+#                     for reply in response.data:
+#                         author = users.get(reply.author_id)
+#                         if author:
+#                             all_replies.append({
+#                                 'conversation_id': tweet_id,
+#                                 'parent_post_text': post_text,
+#                                 'tweet_id': reply.id,
+#                                 'username': author.username,
+#                                 'created_at': reply.created_at,
+#                                 'text': reply.text
+#                             })
+#         except Exception as e:
+#             print(f"An error occurred while fetching replies for tweet {tweet_id}: {e}")
+
+#     return all_replies
+
+def get_replies_to_tweets(tweet_info):
     all_replies = []
 
-    for tweet in tweets_info:
-        tweet_id = tweet['tweet_id']
+    for tweet in tweet_info:
+        tweet_id = str(tweet['tweet_id'])
         post_text = tweet['text']
         query = f'conversation_id:{tweet_id} -is:retweet'
 
@@ -125,7 +160,7 @@ def get_replies_to_tweets(tweets_info):
             for response in tweepy.Paginator(
                 client.search_recent_tweets,
                 query=query,
-                tweet_fields=['author_id', 'created_at', 'in_reply_to_user_id'],
+                tweet_fields=['author_id', 'created_at', 'in_reply_to_user_id', 'referenced_tweets'],
                 expansions='author_id',
                 user_fields=['username'],
                 max_results=100
@@ -133,21 +168,32 @@ def get_replies_to_tweets(tweets_info):
                 if response.data:
                     users = {u['id']: u for u in response.includes['users']}
                     for reply in response.data:
+                        if reply.id == int(tweet_id):
+                            continue 
                         author = users.get(reply.author_id)
                         if author:
-                            all_replies.append({
-                                'conversation_id': tweet_id,
-                                'parent_post_text': post_text,
-                                'tweet_id': reply.id,
-                                'username': author.username,
-                                'created_at': reply.created_at,
-                                'text': reply.text
-                            })
+                            
+                            is_direct_reply = False
+                            if reply.referenced_tweets:
+                                for ref in reply.referenced_tweets:
+                                    if ref['type'] == 'replied_to' and str(ref['id']) == tweet_id:
+                                        is_direct_reply = True
+                                        break
+
+                            if is_direct_reply:
+                                all_replies.append({
+                                    'conversation_id': tweet_id,
+                                    'parent_post_text': post_text,
+                                    'tweet_id': reply.id,
+                                    'username': author.username,
+                                    'created_at': reply.created_at,
+                                    'text': reply.text,
+                                    'is_direct_reply': is_direct_reply
+                                })
         except Exception as e:
             print(f"An error occurred while fetching replies for tweet {tweet_id}: {e}")
 
     return all_replies
-
 
 # ----------------> Extracting Usernames from Excel <----------------
 def extract_usernames_from_excel():
@@ -289,7 +335,7 @@ def filter_recent_replies(replies, hours=24, max_replies=4):
 
 #     return unreplied
 
-def filter_unreplied_tweets(tweets, my_username="Shift1646020"):
+def filter_unreplied_tweets(tweets, my_username="MIND_agent"):
     unreplied = []
     details = []
     # Track which users on each parent post you’ve already replied to

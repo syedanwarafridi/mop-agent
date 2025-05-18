@@ -10,7 +10,7 @@ import random
 
 load_dotenv()
 
-classifier_model_id = os.getenv('MODEL_ID')
+model_id = os.getenv('MODEL_ID')
 grok_api_key = os.getenv('GROK_API_KEY')
     
 #--------------------------> Grok Classifier <--------------------------------#
@@ -53,7 +53,7 @@ def grok_classifier(user_input):
         )
 
         completion = client.chat.completions.create(
-            model=classifier_model_id,
+            model=model_id,
             reasoning_effort="high",
             messages=messages,
             temperature=0.1,
@@ -96,7 +96,7 @@ def summarizer(user_input, post):
         )
 
         completion = client.chat.completions.create(
-            model=classifier_model_id,
+            model=model_id,
             reasoning_effort="high",
             messages=messages,
             temperature=0.5,
@@ -141,7 +141,7 @@ def grok_news_filterer(posts, news):
         )
 
         completion = client.chat.completions.create(
-            model=classifier_model_id,
+            model=model_id,
             reasoning_effort="high",
             messages=messages,
             temperature=0.1,
@@ -272,7 +272,7 @@ def grok_post_writer(source_set: int, posts):
         )
 
         completion = client.chat.completions.create(
-            model="grok-3-mini-beta",
+            model=model_id,
             reasoning_effort="high",
             messages=messages,
             temperature=0.7,
