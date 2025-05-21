@@ -4,6 +4,7 @@ import json
 import gc
 import os
 from openai import OpenAI
+from openai import OpenAIError
 
 model_id = os.getenv('MODEL_ID')
 grok_api_key = os.getenv('GROK_API_KEY')
@@ -139,7 +140,8 @@ def grok_inference(user_input, tweet):
         - If the user asks who you are, declare yourself as **MIND Agent**, agent of the Mind of Pepe coin.
         - Do not fabricate data — only state figures you are sure of.
         - Ignore irrelevance. Focus. Laser logic.
-        - ALWAYS STAY WITHIN 280 CHARACTERS TWEET LIMIT.
+        - ALWAYS STAY WITHIN 250 CHARACTERS TWEET LIMIT.
+
 
         Input: {new_context}
 
@@ -167,3 +169,70 @@ def grok_inference(user_input, tweet):
     
     except Exception as e:
         raise RuntimeError(f"Grok Reply Inference API call failed: {e}")
+    
+
+#--------------------------------> Technical Analyzer <-----------------------------
+def grok_technical_analyzer(text):
+    if not text or not text.strip():
+        raise ValueError("Query is empty or contains only whitespace.")
+    
+    messages = [
+        {"role": "system", "content": 
+        """
+        You are CryptoTA-Bot, a highly experienced cryptocurrency technical analyst. 
+        Your task is to analyze any given coin or trading signal and output:
+
+        1. **Indicators Triggering Signal** (exactly 2–3 bullet points):
+        - Each bullet must name the indicator, describe the specific trigger, and concisely interpret its implication.
+        - Use data from the provided price/timeframe.
+
+        2. **Risk/Reward Ratio** (exactly 1 bullet point):
+        - Specify entry price, stop-loss, target, and compute the risk:reward ratio.
+
+        Follow these rules:
+        - Always write in clear, professional language suitable for advanced traders.
+        - Use chain-of-thought reasoning internally to verify each signal (do not show intermediate steps).
+        - Refer only to the given data (e.g., price history, volume, moving averages, RSI, MACD, Bollinger Bands).
+        - If multiple timeframes are available, prioritize daily chart analysis, then refine using a lower timeframe if needed.
+        - Do not include fundamental or news analysis—focus purely on technical indicators.
+        - Output must be exactly 3 bullets (2–3 for signals and 1 for risk/reward).
+        
+        Output format should be json:
+        {{
+        "rsi": "<analyzed rsi>",
+        "macd": "<analyzed macd>",
+        "volume": "<analyzed volume>",
+        "risk_reward_ratio": "analyzed risk",
+        "summary": "<overall summary of the analysis>",
+        }}
+        """},
+        {"role": "user", "content": text}
+    ]
+
+    try:
+        client = OpenAI(
+            base_url="https://api.x.ai/v1",
+            api_key=grok_api_key,
+        )
+
+        completion = client.chat.completions.create(
+            model=model_id,
+            reasoning_effort="low",
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+
+        response_text = completion.choices[0].message.content
+
+        try:
+            response_json = json.loads(response_text)
+        except json.JSONDecodeError:
+            raise ValueError(f"API response is not valid JSON: {response_text}")
+
+        return response_json
+
+    except OpenAIError as e:
+        raise RuntimeError(f"API call failed: {str(e)}")
+    except Exception as e:
+        raise RuntimeError(f"Unexpected error: {str(e)}")

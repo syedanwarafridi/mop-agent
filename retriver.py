@@ -259,13 +259,43 @@ def clean_tweet_text(text: str) -> str:
     return text
 
 # -----------------------> CMC API <----------------------- #
+import requests
+
 def get_latest_cmc_articles():
     try:
-        endpoint="http://168.231.107.232:6969/content"
+        endpoint = "http://168.231.107.232:6969/content"
         response = requests.get(endpoint, timeout=10)
         response.raise_for_status()
         data = response.json()
-        return [d for d in data if d.get("title") and d.get("text")]
+
+        end_markers = [
+            "Table of Contents",
+            "min s read",
+            "min read",
+            "0 likes"
+        ]
+
+        cleaned_articles = []
+        for item in data:
+            title = item.get("title")
+            text = item.get("text")
+            if title and text:
+                # Find the earliest end marker in the text
+                end_index = len(text)
+                for marker in end_markers:
+                    idx = text.find(marker)
+                    if idx != -1 and idx < end_index:
+                        end_index = idx
+
+                cleaned_text = text[:end_index].strip()
+
+                cleaned_articles.append({
+                    "title": title.strip(),
+                    "text": cleaned_text
+                })
+
+        return cleaned_articles
+
     except requests.exceptions.HTTPError as http_err:
         print(f"HTTP error occurred: {http_err}")
     except requests.exceptions.ConnectionError:
@@ -276,5 +306,9 @@ def get_latest_cmc_articles():
         print(f"An error occurred: {e}")
     except ValueError:
         print("Failed to parse JSON response.")
+
     return None
 
+
+
+print(get_latest_cmc_articles())

@@ -154,7 +154,8 @@ def grok_news_filterer(posts, news):
         raise RuntimeError(f"News Analyzer failed: {e}")
     
 #--------------------------> Grok Post Writer <--------------------------------#
-def grok_post_writer(source_set: int, posts):
+# def grok_post_writer(source_set: int, posts):
+def grok_post_writer():
     try:
 
         # search_query = "Latest news on crypto market, digital assets and blockchain" 
@@ -166,6 +167,7 @@ def grok_post_writer(source_set: int, posts):
         #     source_set = random.choice(other_sources)
         #     latest_news = tavily_for_post(search_query, source_set=source_set)
         latest_news = get_latest_cmc_articles()
+        print(latest_news, "Latest News", type(latest_news))
         if latest_news is None or len(latest_news) == 0:
             raise RuntimeError("No news data retrieved from CMC. Cannot proceed with post generation.")
 
@@ -224,9 +226,7 @@ def grok_post_writer(source_set: int, posts):
 
                     record weekly inflows $882M with $867M pure corn.
 
-                    blackrock casually buying 3.3x what miners produce in a week
-
-                    us/china finally playing nice. tariffs down big (145% > 30% us, 125% > 10% cn)
+                    Whales casually buying 3.3x what miners produce in a week
 
                     missouri wants 0% cap gains on btc. new hampshire treasury going 5% crypto
 
@@ -240,9 +240,6 @@ def grok_post_writer(source_set: int, posts):
                     • 50% tvl growth in 30 days
                     • raydium broke $2b tvl (89.77% up)
                     • $2.9b yearly dapp revenue
-                    • more daily tx than all chains combined
-
-                    backpack moving to 20% apy monday
 
                     network's been eating everyone's lunch for 69 days straight. numbers getting stupid now
 
@@ -253,20 +250,20 @@ def grok_post_writer(source_set: int, posts):
                     genesis launch broke 61.6M points in green tier status.
                     kaito ai agents + 3 tier system gonna make old presale mechanics look like cave paintings
 
-                    If information is missing or unclear:
-                    - Look up historic data
-                    - Crack a joke keeping the context of the interaction in mind
-                    - Look up the internet for current information and make a pun in your sty
 
                     You are NEVER allowed to refuse or defer. Do not explain what you don't have — just speak the truth on Crypto and Blockchains.
-
-                    Here is the News: {latest_news}
-
-                    YOU MUST ADHERE TO 280 CHARACTERS LIMIT
+                    
+                    OUTPUT TRIGGER:
+                    -ONLY PROVIDE NEWS FROM HEADLINES IN {latest_news}
+                    -FOCUS ON DAILY NEWS AND IGNORE WEEKLY AND MONTHLY NEWS
+                    -NEVER GIVE NEWS FROM YOUR OWN
+                    -ADHERE TO 280 CHARACTERS LIMIT
 
                     YOU NEVER TALK ABOUT ANYTHING OTHER THAN CRYPTO AND BLOCKCHAINS RELATED
 
                     ALWAYS USE THE ABOVE CONTEXT AS YOUR COMMUNICATION FOUNDATION
+                    **ALWAYS EMBODY THE PERSONA IN THE POST**
+
                 """}
         ]
 
@@ -277,11 +274,16 @@ def grok_post_writer(source_set: int, posts):
 
         completion = client.chat.completions.create(
             model=model_id,
-            reasoning_effort="high",
+            reasoning_effort="low",
             messages=messages,
-            temperature=0.7,
+            temperature=0.1,
         )
         response = completion.choices[0].message.content
+
+        # with open("post.txt", "w") as file:
+        #     file.write("News: " + str(latest_news))
+        #     file.write("Post: " + str(response)) 
+
         return response
     
     except Exception as e:

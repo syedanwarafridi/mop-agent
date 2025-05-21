@@ -2,7 +2,7 @@ from fastapi import FastAPI, Request, HTTPException
 from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
-from inference import grok_inference
+from inference import grok_inference, grok_technical_analyzer
 from classifier import grok_classifier, grok_post_writer, find_most_similar_replies
 from retriver import get_combined_stats_with_api, clean_tweet_text
 from twitter_apis import post_tweets, get_latest_top3_posts, get_replies_to_tweets, extract_usernames_from_excel, filter_replies_by_usernames, filter_recent_replies, filter_unreplied_tweets, reply_to_tweet, extract_mentions, add_username_to_excel
@@ -211,12 +211,13 @@ async def post_tweet(request: Request):
             source_set = {8: 1, 7: 2, 21: 3}.get(current_hour, 1)
         else:
             source_set = 3
-        logger.info(f"Source Set for News: {source_set}")
+        # logger.info(f"Source Set for News: {source_set}")
         
-        posts = get_recent_parent_posts()
-        logger.info(f"Extracted Posts: {posts}")
+        # posts = get_recent_parent_posts()
+        # logger.info(f"Extracted Posts: {posts}")
 
-        tweet_content = grok_post_writer(source_set=source_set, posts=posts)
+        # tweet_content = grok_post_writer(source_set=source_set, posts=posts)
+        tweet_content = grok_post_writer()
         logger.info(f"Tweet Content: {tweet_content}")
         # text = clean_tweet_text(tweet_content)
         # print("Tweet Content: ", text)
@@ -520,3 +521,27 @@ async def health_check():
             "message": "Service is up and running."
         }
     }
+
+# ------------------> Technical Analyzer <-------------------- #
+from typing import Dict, Any
+import json
+class AnalysisRequest(BaseModel):
+    query: Dict[str, Any]  # Accept any JSON object
+
+@app.post("/technical-analysis", summary="Perform Technical Analysis", response_description="Technical analysis result in JSON format")
+async def technical_analysis(request: AnalysisRequest):
+    try:
+        # Convert the entire JSON/dict to a string
+        query_str = json.dumps(request.query)
+        
+        if not query_str.strip():
+            raise HTTPException(status_code=400, detail="Query cannot be empty.")
+
+        # Pass the stringified JSON to your analyzer
+        analysis_result = grok_technical_analyzer(query_str)
+        return {"success": True, "response": analysis_result}
+    
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception:
+        raise HTTPException(status_code=500, detail="An unexpected error occurred during analysis.")
