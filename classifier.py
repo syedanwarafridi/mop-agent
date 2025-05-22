@@ -332,7 +332,53 @@ def find_most_similar_replies(replies_data: list[dict], top_n: int = 1, exclude_
             final_results.append(reply)
 
     return final_results
+#---------------------------> Grok Price Classifier <-----------------------------#
+def grok_price_classifier(user_input):
+    try:
+        if not user_input or not user_input.strip():
+            raise ValueError("Query is empty or contains only whitespace.")
 
+        messages = [
+            {"role": "system", "content": 
+            """
+                    You are an AI assistant tasked with classifying user tweet. You need to classify wether the tweet has discussed/mentioned about any specific coin/token price. 
+                    If a tweet discussed/mentioned about price of any specific coin/token, you need to extract the token symbol (e.g., $BTC) and you need to make `price_mentioned` as `True` in the response.
+
+                    If a token name, ticker symbol (e.g., "$BTC") mentioned, extract them and return them in the response.
+
+                    **Important:** 
+                    - Token names may appear in different formats such as "$TOKEN", "TOKEN_NAME", or "TOKEN TICKER". Extract all mentioned tokens.
+                    - Consider the words with `@` as twitter username and do not consider it as token or coin. 
+
+                    Please provide your response in **strict JSON format**:
+                    {{
+                        "price_mentioned": "<True or False>",
+                        "token_names": ["List of token names if mentioned like BTC, ETH, etc.], otherwise empty list,"],
+                    }}
+            """},
+            {"role": "user", "content": user_input}
+        ]
+
+        client = OpenAI(
+        base_url="https://api.x.ai/v1",
+        api_key=grok_api_key,
+        )
+
+        completion = client.chat.completions.create(
+            model=model_id,
+            reasoning_effort="low",
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+        response = completion.choices[0].message.content
+        response = json.loads(response)
+        return response
+    
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Model response is not valid JSON: {e}\nRaw response: {response}")
+    except Exception as e:
+        raise RuntimeError(f"Price Classification failed: {e}")
 #--------------------> Numbers corrector <-------------------#
 def grok_corrector(text, crypto_latest_data):
     try:
@@ -379,3 +425,16 @@ def grok_corrector(text, crypto_latest_data):
         raise ValueError(f"Model response is not valid JSON: {e}\nRaw response: {response}")
     except Exception as e:
         raise RuntimeError(f"Numbers Corrector failed: {e}")
+    
+
+# u_inp = """
+#     immunefi rolling out "all stars" initiative amid $1.74b losses.
+
+#     some hard truths in web3 security:
+
+#     • $1.74b total losses reported this cycle
+
+#     losses stacking like dark omens; security stars aligning for the chain's survival. usual crypto chaos.
+#     """
+
+# print(grok_price_classifier(u_inp))
