@@ -40,7 +40,7 @@ def grok_classifier(user_input):
                     Please provide your response in **strict JSON format**:
                     {{
                         "category": "<Category of the query>",
-                        "token_names": ["List of token names if mentioned, otherwise null"],
+                        "token_names": ["List of token names if mentioned like BTC, ETH, etc.], otherwise empty list,"],
                         "token_address": "<Token address from the query if mentioned, otherwise empty string>"
                     }}
             """},
@@ -54,8 +54,9 @@ def grok_classifier(user_input):
 
         completion = client.chat.completions.create(
             model=model_id,
-            reasoning_effort="high",
+            reasoning_effort="low",
             messages=messages,
+            response_format={"type": "json_object"},
             temperature=0.1,
         )
         response = completion.choices[0].message.content
@@ -258,7 +259,7 @@ def grok_post_writer():
                     -FOCUS ON DAILY NEWS AND IGNORE WEEKLY AND MONTHLY NEWS
                     -NEVER GIVE NEWS FROM YOUR OWN
                     -ADHERE TO 280 CHARACTERS LIMIT
-
+                    -IF YOU DO NOT HAVE NUMERICAL DATA (E.G., PRICES OR MARKET CAPS) FOR COINS OR TOKENS IN THE NEWS, DO NOT SAY 'no $ figures yet' OR ANYTHING SIMILAR. INSTEAD, PROVIDE USEFUL CONTEXT OR CHOOSE NEWS ITEMS FOR WHICH YOU ALREADY HAVE RELEVANT INFORMATION.
                     YOU NEVER TALK ABOUT ANYTHING OTHER THAN CRYPTO AND BLOCKCHAINS RELATED
 
                     ALWAYS USE THE ABOVE CONTEXT AS YOUR COMMUNICATION FOUNDATION
@@ -332,3 +333,49 @@ def find_most_similar_replies(replies_data: list[dict], top_n: int = 1, exclude_
 
     return final_results
 
+#--------------------> Numbers corrector <-------------------#
+def grok_corrector(text, crypto_latest_data):
+    try:
+        if not text or not text.strip():
+            raise ValueError("Query is empty or contains only whitespace.")
+
+        messages = [
+            {"role": "system", "content": 
+            """
+                You are an AI assistant tasked updating the numbers and calculation in the provided text.
+                and return the updated text in the same format as the input text.
+                Your task is to correct the numbers in the text and return the updated text.
+                You are not allowed to change the text or add any additional information.
+            """},
+            {"role": "user", "content": f"""
+                Your Task is to correct the numbers in the provided text using the latest data return the updated text in the same format as the input text.
+                Here is the text: {text}
+                Here is the latest data: {crypto_latest_data}
+
+                Your response should be in JSON format:
+                {{
+                    "text": "<Updated text>"
+                }}
+            """}
+        ]
+
+        client = OpenAI(
+        base_url="https://api.x.ai/v1",
+        api_key=grok_api_key,
+        )
+
+        completion = client.chat.completions.create(
+            model=model_id,
+            reasoning_effort="low",
+            messages=messages,
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+        response = completion.choices[0].message.content
+        response = json.loads(response)
+        return response
+    
+    except json.JSONDecodeError as e:
+        raise ValueError(f"Model response is not valid JSON: {e}\nRaw response: {response}")
+    except Exception as e:
+        raise RuntimeError(f"Numbers Corrector failed: {e}")

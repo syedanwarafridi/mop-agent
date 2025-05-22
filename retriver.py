@@ -310,5 +310,41 @@ def get_latest_cmc_articles():
     return None
 
 
+# -----------------------> CMC Latest data API <----------------------- #
+api_key=os.getenv("CMC_API_KEY"),
+def fetch_crypto_latest_quotes(symbols):
+    url = 'https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest'
+    parameters = {
+        'symbol': symbols,
+        'convert': 'USD'
+    }
+    headers = {
+        'Accepts': 'application/json',
+        'X-CMC_PRO_API_KEY': "6553862c-73cd-46cc-aa70-0963bbe6a0ea",
+    }
 
-print(get_latest_cmc_articles())
+    try:
+        response = requests.get(url, headers=headers, params=parameters)
+        response.raise_for_status()  # Raises HTTPError for bad responses (4xx or 5xx)
+        data = response.json()
+
+        # Check for API-level errors
+        if data.get("status", {}).get("error_code", 0) != 0:
+            error_msg = data["status"].get("error_message", "Unknown error")
+            print(f"API Error: {error_msg}")
+            return None
+
+        return data
+
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+    except requests.exceptions.ConnectionError:
+        print("Error: Connection error.")
+    except requests.exceptions.Timeout:
+        print("Error: Request timed out.")
+    except requests.exceptions.RequestException as err:
+        print(f"An unexpected error occurred: {err}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+
+    return None

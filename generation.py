@@ -3,8 +3,8 @@ from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
 from inference import grok_inference, grok_technical_analyzer
-from classifier import grok_classifier, grok_post_writer, find_most_similar_replies
-from retriver import get_combined_stats_with_api, clean_tweet_text
+from classifier import grok_classifier, grok_post_writer, find_most_similar_replies, grok_corrector
+from retriver import get_combined_stats_with_api, clean_tweet_text, fetch_crypto_latest_quotes
 from twitter_apis import post_tweets, get_latest_top3_posts, get_replies_to_tweets, extract_usernames_from_excel, filter_replies_by_usernames, filter_recent_replies, filter_unreplied_tweets, reply_to_tweet, extract_mentions, add_username_to_excel
 from fastapi.responses import JSONResponse
 import traceback
@@ -221,8 +221,33 @@ async def post_tweet(request: Request):
         logger.info(f"Tweet Content: {tweet_content}")
         # text = clean_tweet_text(tweet_content)
         # print("Tweet Content: ", text)
-        
-        response = post_tweets(tweet_content.lower())
+        classification = grok_classifier(tweet_content)
+        tokens = classification["token_names"]
+        logger.info(f"Tokens: {tokens}")
+        if not tokens:
+            logger.warning("No tokens found in classification. Posting original tweet content.")
+            response = post_tweets(tweet_content.lower())  
+
+        else:
+            symbols = ",".join(tokens)
+            crypto_data = fetch_crypto_latest_quotes(symbols)
+            corrected_tweet = grok_corrector(tweet_content, crypto_data)
+            logger.info(f"Corrected Tweet Content: {corrected_tweet}")
+            response = post_tweets(corrected_tweet["text"].lower())
+
+        try:
+            log_file = "posts_log.txt"
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write("\n" + "="*60 + "\n")
+                f.write("Original Tweet:\n")
+                f.write(tweet_content + "\n")
+                if corrected_tweet:
+                    f.write("Corrected Tweet:\n")
+                    f.write(corrected_tweet["text"] + "\n")
+                else:
+                    f.write("Corrected Tweet: N/A (No correction needed)\n")
+        except Exception as file_error:
+            logger.error(f"Failed to write to log file: {file_error}")
 
         if isinstance(response, str):
             return JSONResponse(status_code=400, content={"success": False, "error": {"message": response}})
@@ -325,8 +350,35 @@ async def reply_to_recent_tweets(request: Request):
             tweet_id = tweet['tweet_id']
             parent_post = tweet['parent_post_text']
             response, classification, context = grok_inference(query, parent_post)
+            classification = grok_classifier(response)
+            tokens = classification["token_names"]
+            logger.info(f"Tokens: {tokens}")
 
-            reply_result = reply_to_tweet(tweet_id, response)
+            if not tokens:
+                logger.warning("No tokens found in classification. Posting original tweet content.")
+                reply_result = reply_to_tweet(tweet_id, response)
+
+            else:
+                symbols = ",".join(tokens)
+                crypto_data = fetch_crypto_latest_quotes(symbols)
+                corrected_tweet = grok_corrector(response, crypto_data)
+                logger.info(f"Corrected Tweet Content: {corrected_tweet}")
+                reply_result = reply_to_tweet(tweet_id, corrected_tweet["text"].lower())
+
+            try:
+                log_file = "tweets_log.txt"
+                with open(log_file, "a", encoding="utf-8") as f:
+                    f.write("\n" + "="*60 + "\n")
+                    f.write("Original Tweet:\n")
+                    f.write(corrected_tweet["text"] + "\n")
+                    if corrected_tweet:
+                        f.write("Corrected Tweet:\n")
+                        f.write(corrected_tweet["text"] + "\n")
+                    else:
+                        f.write("Corrected Tweet: N/A (No correction needed)\n")
+            except Exception as file_error:
+                logger.error(f"Failed to write to log file: {file_error}")
+            
 
             if reply_result.get("success"):
                 logger.info(f"Replied to tweet {tweet_id}")
@@ -426,6 +478,36 @@ async def reply_to_mention_tweets(request: Request):
             try:
                 response, classification, context = grok_inference(query, parent_post)
                 logger.info(f"Inference output for mention {tweet_id}: response={response}")
+
+                classification = grok_classifier(response)
+                tokens = classification["token_names"]
+                logger.info(f"Tokens: {tokens}")
+                
+                if not tokens:
+                    logger.warning("No tokens found in classification. Posting original tweet content.")
+                    reply_result = reply_to_tweet(tweet_id, response)
+
+                else:
+                    symbols = ",".join(tokens)
+                    crypto_data = fetch_crypto_latest_quotes(symbols)
+                    corrected_tweet = grok_corrector(response, crypto_data)
+                    logger.info(f"Corrected Tweet Content: {corrected_tweet}")
+                    reply_result = reply_to_tweet(tweet_id, corrected_tweet["text"].lower())
+
+                try:
+                    log_file = "mention_tweets_log.txt"
+                    with open(log_file, "a", encoding="utf-8") as f:
+                        f.write("\n" + "="*60 + "\n")
+                        f.write("Original Tweet:\n")
+                        f.write(corrected_tweet["text"] + "\n")
+                        if corrected_tweet:
+                            f.write("Corrected Tweet:\n")
+                            f.write(corrected_tweet["text"] + "\n")
+                        else:
+                            f.write("Corrected Tweet: N/A (No correction needed)\n")
+                except Exception as file_error:
+                    logger.error(f"Failed to write to log file: {file_error}")
+
             except Exception as e:
                 logger.error(f"Inference failed for mention {tweet_id}: {e}")
                 continue
@@ -434,7 +516,7 @@ async def reply_to_mention_tweets(request: Request):
                 logger.error(f"Invalid inference response for mention {tweet_id}: {response}")
                 continue
 
-            reply_result = reply_to_tweet(tweet_id, response)
+            #reply_result = reply_to_tweet(tweet_id, response)
             if reply_result.get("success"):
                 logger.info(f"Replied to mention {tweet_id} with tweet_id {reply_result.get('tweet_id')}")
                 replied_tweets.append(tweet_id)
