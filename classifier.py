@@ -348,12 +348,12 @@ def grok_price_classifier(user_input):
 
                     **Important:** 
                     - Token names may appear in different formats such as "$TOKEN", "TOKEN_NAME", or "TOKEN TICKER". Extract all mentioned tokens.
-                    - Consider the words with `@` as twitter username and do not consider it as token or coin. 
+                    - Consider the words with `@` as twitter username and do not consider it as token or coin.
 
                     Please provide your response in **strict JSON format**:
                     {{
                         "price_mentioned": "<True or False>",
-                        "token_names": ["List of token names if mentioned like BTC, ETH, etc.], otherwise empty list,"],
+                        "token_names": ["List of token names if their price is mentioned. BTC, ETH etc.], otherwise empty list,"],
                     }}
             """},
             {"role": "user", "content": user_input}
@@ -425,16 +425,4 @@ def grok_corrector(text, crypto_latest_data):
         raise ValueError(f"Model response is not valid JSON: {e}\nRaw response: {response}")
     except Exception as e:
         raise RuntimeError(f"Numbers Corrector failed: {e}")
-    
 
-# u_inp = """
-#     immunefi rolling out "all stars" initiative amid $1.74b losses.
-
-#     some hard truths in web3 security:
-
-#     • $1.74b total losses reported this cycle
-
-#     losses stacking like dark omens; security stars aligning for the chain's survival. usual crypto chaos.
-#     """
-
-# print(grok_price_classifier(u_inp))
